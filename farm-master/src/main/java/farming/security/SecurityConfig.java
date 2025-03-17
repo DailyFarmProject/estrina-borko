@@ -1,5 +1,9 @@
 package farming.security;
 
+import farming.api.constants.AuthApiConstants;
+import farming.api.constants.CustomerApiConstants;
+import farming.api.constants.FarmerApiConstants;
+import farming.api.constants.ProductApiConstants;
 import farming.security.filter.JwtAuthFilter;
 import farming.user.entity.User;
 import farming.user.repo.UserNewRepository;
@@ -22,7 +26,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -32,68 +35,69 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Slf4j
 public class SecurityConfig {
 
-	@Autowired
-	@Lazy
-	private JwtAuthFilter authFilter;
+    @Autowired
+    @Lazy
+    private JwtAuthFilter authFilter;
 
-	@Autowired
-	@Lazy
-	private UserService userInfoService;
+    @Autowired
+    @Lazy
+    private UserService userInfoService;
 
-	private final UserNewRepository userRepository;
+    private final UserNewRepository userRepository;
 
-	public SecurityConfig(UserNewRepository userRepository) {
-		this.userRepository = userRepository;
-	}
+    public SecurityConfig(UserNewRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
-	@Bean
-	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-		http.httpBasic(Customizer.withDefaults()).csrf(csrf -> csrf.disable()) // Отключаем CSRF (можно включить при
-																				// необходимости для форм)
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.httpBasic(Customizer.withDefaults())
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers("/api/auth/register", AuthApiConstants.SIGNUP, AuthApiConstants.LOGIN).permitAll()
+                        .requestMatchers("/api/admin/**").hasAuthority("TYPE_ADMIN")
+                        .requestMatchers(FarmerApiConstants.BASE_PATH + "/**",
+                                ProductApiConstants.ADD, ProductApiConstants.UPDATE, ProductApiConstants.REMOVE,
+                                ProductApiConstants.SOLD, ProductApiConstants.SURPRISE_BAG_CREATE)
+                        .hasAuthority("TYPE_FARMER")
+                        .requestMatchers(CustomerApiConstants.BASE_PATH + "/**",
+                                ProductApiConstants.SURPRISE_BAG_BUY, ProductApiConstants.PURCHASED)
+                        .hasAuthority("TYPE_CUSTOMER")
+                        .anyRequest().authenticated())
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
 
-				// Настройка авторизации запросов
-				.authorizeHttpRequests(authorize -> authorize
-						.requestMatchers("/api/auth/register", "/api/login", "/api/auth/signup", "/api/auth/login")
-						.permitAll().requestMatchers("/api/admin/**").hasAuthority("TYPE_ADMIN")
-						.requestMatchers("/api/farmer/**", "/products/add", "/products/update", "/products/remove", 
-								"/products/sold/{farmerId}", "/products/surprise-bag/create").hasAuthority("TYPE_FARMER")
-						.requestMatchers("/api/customer/**", "/products/surprise-bag/buy", "/purchased/{customerId}").hasAuthority("TYPE_CUSTOMER").anyRequest().authenticated())
-				.sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS) // No sessions
-				).authenticationProvider(authenticationProvider()) // Custom authentication provider
-				.addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class);
-		return http.build();
-	}
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> {
+            log.debug("Looking up user: {}", username);
+            User user = userRepository.findByEmail(username)
+                    .orElseThrow(() -> {
+                        log.error("Failed to find user '{}'", username);
+                        return new UsernameNotFoundException("User not found: " + username);
+                    });
+            return user;
+        };
+    }
 
-	@Bean
-	public UserDetailsService userDetailsService() {
-		return username -> {
-	        log.debug("Looking up user: {}", username);
-	        User user = userRepository.findByEmail(username)
-	                .orElseThrow(() -> {
-	                    log.error("Failed to find user '{}'", username);
-	                    return new UsernameNotFoundException("User not found: " + username);
-	                });
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
-	        return user;  
-	    };
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider();
+        authenticationProvider.setUserDetailsService(userInfoService);
+        authenticationProvider.setPasswordEncoder(passwordEncoder());
+        return authenticationProvider;
+    }
 
-	}
-
-	@Bean
-	public PasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder(); // Password encoding
-	}
-
-	@Bean
-	public AuthenticationProvider authenticationProvider() {
-		DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider();
-		authenticationProvider.setUserDetailsService(userInfoService);
-		authenticationProvider.setPasswordEncoder(passwordEncoder());
-		return authenticationProvider;
-	}
-
-	@Bean
-	public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-		return config.getAuthenticationManager();
-	}
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
 }

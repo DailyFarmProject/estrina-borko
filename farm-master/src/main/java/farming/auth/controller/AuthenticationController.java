@@ -1,6 +1,6 @@
 package farming.auth.controller;
 
-
+import farming.api.constants.AuthApiConstants;
 import farming.auth.dto.LoginRequestDTO;
 import farming.auth.service.AuthenticationService;
 import farming.jwt.dto.JwtTokenDTO;
@@ -18,50 +18,44 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping(AuthApiConstants.BASE_PATH)
 public class AuthenticationController {
 
     private final Logger logger = LoggerFactory.getLogger(AuthenticationController.class);
 
-
     @Autowired
     private AuthenticationService authenticationService;
 
-
-    @PostMapping("/signup")
+    @PostMapping(AuthApiConstants.SIGNUP)
     public ResponseEntity<UserResponseDto> signUp(@RequestBody UserRequestDto userRequestDto, HttpServletRequest request) {
         logger.info("signup user: {}", userRequestDto);
-
-        UserResponseDto response;
         try {
-            response = authenticationService.signUp(userRequestDto, request);
+            UserResponseDto response = authenticationService.signUp(userRequestDto, request);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return new ResponseEntity(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+            logger.error("Error during signup: {}", e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to sign up user: " + e.getMessage(), e);
         }
-        return ResponseEntity.ok(response);
     }
 
-    /**
-     * Login
-     *
-     * @param loginRequestDTO User credentials
-     * @return JWT Token
-     */
-    @PostMapping("/login")
+    @PostMapping(AuthApiConstants.LOGIN)
     public ResponseEntity<JwtTokenDTO> authenticateAndGetToken(@RequestBody LoginRequestDTO loginRequestDTO, HttpServletResponse response) {
         logger.info("authenticateAndGetToken: {}", loginRequestDTO);
         try {
             JwtTokenDTO token = authenticationService.login(loginRequestDTO.getEmail(), loginRequestDTO.getPassword(), response);
-            if (token != null) {
-                return ResponseEntity.ok(token);
-            } else {
-                return new ResponseEntity("User email not found", HttpStatus.NOT_FOUND);
+            if (token == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User email not found");
             }
+            return ResponseEntity.ok(token);
         } catch (BadCredentialsException e) {
-            logger.error(e.getMessage());
-            return new ResponseEntity("Bad credentials", HttpStatus.UNAUTHORIZED);
+            logger.error("Bad credentials: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bad credentials", e);
+        } catch (Exception e) {
+            logger.error("Error during login: {}", e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to login: " + e.getMessage(), e);
         }
     }
 }
