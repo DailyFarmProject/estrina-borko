@@ -54,7 +54,7 @@ public class SecurityConfig {
         http.httpBasic(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/auth/register", AuthApiConstants.SIGNUP, AuthApiConstants.LOGIN).permitAll()
+                        .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority("TYPE_ADMIN")
                         .requestMatchers(FarmerApiConstants.BASE_PATH + "/**",
                                 ProductApiConstants.ADD, ProductApiConstants.UPDATE, ProductApiConstants.REMOVE,
